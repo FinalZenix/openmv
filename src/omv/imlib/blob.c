@@ -25,6 +25,7 @@
  */
 #include "imlib.h"
 
+// Function to calculate the seven Hu moments from central moments
 typedef struct xylr {
     int16_t x, y, l, r, t_l, b_l;
 }
@@ -117,7 +118,7 @@ static void merge_bins(int b_dst_start, int b_dst_end, uint16_t **b_dst_hist, ui
     *b_src_hist_len = 0;
     (*b_src_hist) = NULL;
 }
-
+float eta_20, eta_02, eta_11, eta_30, eta_12, eta_21, eta_03;
 static float calc_roundness(float blob_a, float blob_b, float blob_c) {
     float roundness_div = fast_sqrtf((blob_b * blob_b) + ((blob_a - blob_c) * (blob_a - blob_c)));
     float roundness_sin = IM_DIV(blob_b, roundness_div);
@@ -266,6 +267,7 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 blob_b += y * sum;
                                 blob_c += y * y * cnt;
 
+
                                 if (y_hist_bins) {
                                     y_hist_bins[y] += cnt;
                                 }
@@ -402,13 +404,61 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
 
                                 float b_mx = blob_cx / ((float) blob_pixels);
                                 float b_my = blob_cy / ((float) blob_pixels);
+                                float mu_00 = blob_pixels; // This is already the area of the blob
+                                float mu_20 = blob_a - (b_mx * blob_cx); // Adjusted central moment
+                                float mu_11 = blob_b - (b_mx * blob_cy);
+                                float mu_02 = blob_c - (b_my * blob_cy);
+
+                                // These are the third-order central moments
+                                float mu_30 = 0.0, mu_12 = 0.0, mu_21 = 0.0, mu_03 = 0.0;
+
+                                // Calculate the third-order moments based on the pixel data
+                                for (int i = 0; i < blob_pixels; i++) {
+                                    float dx = x_values[i] - b_mx;  // Deviation from centroid in x
+                                    float dy = y_values[i] - b_my;  // Deviation from centroid in y
+
+                                    mu_30 += dx * dx * dx;         // (x - x_bar)^3
+                                    mu_12 += dx * dy * dy;         // (x - x_bar)(y - y_bar)^2
+                                    mu_21 += dx * dx * dy;         // (x - x_bar)^2(y - y_bar)
+                                    mu_03 += dy * dy * dy;         // (y - y_bar)^3
+                                }
+                                eta_20 = mu_20 / pow(mu_00, 2);
+                                eta_11 = mu_11 / pow(mu_00, 2);
+                                eta_02 = mu_02 / pow(mu_00, 2);
+
+                                eta_30 = mu_30 / pow(mu_00, 2.5);
+                                eta_12 = mu_12 / pow(mu_00, 2.5);
+                                eta_21 = mu_21 / pow(mu_00, 2.5);
+                                eta_03 = mu_03 / pow(mu_00, 2.5);
+
+                                float hu[7]; // Array to store the 7 Hu moments
+
+                                hu[0] = eta_20 + eta_02;
+                                hu[1] = pow((eta_20 - eta_02), 2) + 4 * pow(eta_11, 2);
+                                hu[2] = pow((eta_30 - 3 * eta_12), 2) + pow((3 * eta_21 - eta_03), 2);
+                                hu[3] = pow((eta_30 + eta_12), 2) + pow((eta_21 + eta_03), 2);
+                                hu[4] = (eta_30 - 3 * eta_12) * (eta_30 + eta_12) * (pow((eta_30 + eta_12), 2) - 3 * pow((eta_21 + eta_03), 2)) +
+                                        (3 * eta_21 - eta_03) * (eta_21 + eta_03) * (3 * pow((eta_30 + eta_12), 2) - pow((eta_21 + eta_03), 2));
+                                hu[5] = (eta_20 - eta_02) * (pow((eta_30 + eta_12), 2) - pow((eta_21 + eta_03), 2)) +
+                                        4 * eta_11 * (eta_30 + eta_12) * (eta_21 + eta_03);
+                                hu[6] = (3 * eta_21 - eta_03) * (eta_30 + eta_12) * (pow((eta_30 + eta_12), 2) - 3 * pow((eta_21 + eta_03), 2)) -
+                                        (3 * eta_12 - eta_30) * (eta_21 + eta_03) * (3 * pow((eta_30 + eta_12), 2) - pow((eta_21 + eta_03), 2));
+
+                                
+                                
+                                float blob_cx = mu_20 / mu_00;      
+
+                                float blob_a = mu_20 + mu_02;   
+
                                 int mx = fast_roundf(b_mx); // x centroid
                                 int my = fast_roundf(b_my); // y centroid
                                 int small_blob_a = blob_a - ((mx * blob_cx) + (mx * blob_cx)) + (blob_pixels * mx * mx);
                                 int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
                                 int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
 
+                                int blob_area = blob_pixels * rect.w * rect.h;
                                 find_blobs_list_lnk_data_t lnk_blob;
+
                                 memcpy(lnk_blob.corners, corners, FIND_BLOBS_CORNERS_RESOLUTION * sizeof(point_t));
                                 memcpy(&lnk_blob.rect, &rect, sizeof(rectangle_t));
                                 lnk_blob.pixels = blob_pixels;
@@ -421,6 +471,16 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                     (small_blob_a !=
                                      small_blob_c) ? (fast_atan2f(2 * small_blob_b, small_blob_a - small_blob_c) / 2.0f) : 0.0f;
                                 lnk_blob.roundness = calc_roundness(small_blob_a, small_blob_b, small_blob_c);
+                                
+                                //  Hu moments
+                                lnk_blob.hu_moments[0] = hu[0];
+                                lnk_blob.hu_moments[1] = hu[1];
+                                lnk_blob.hu_moments[2] = hu[2];
+                                lnk_blob.hu_moments[3] = hu[3];
+                                lnk_blob.hu_moments[4] = hu[4];
+                                lnk_blob.hu_moments[5] = hu[5];
+                                lnk_blob.hu_moments[6] = hu[6];
+
                                 lnk_blob.x_hist_bins_count = 0;
                                 lnk_blob.x_hist_bins = NULL;
                                 lnk_blob.y_hist_bins_count = 0;
