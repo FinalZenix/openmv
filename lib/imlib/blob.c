@@ -1134,8 +1134,8 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 
                                 // Calculate central moments using float centroids for precision
                                 // Apply Sheppard's correction (+ blob_pixels / 12.0f) to compensate for discrete pixel integration
-                                float mu20 = blob_a - (b_mx * blob_cx) + (blob_pixels / 12.0f);
-                                float mu02 = blob_c - (b_my * blob_cy) + (blob_pixels / 12.0f);
+                                float mu20 = blob_a - (b_mx * blob_cx);
+                                float mu02 = blob_c - (b_my * blob_cy);
                                 float mu11 = blob_b - (b_mx * blob_cy);
                                 
                                 float mu30 = blob_d - (3 * b_mx * blob_a) + (2 * b_mx * b_mx * blob_cx);
