@@ -41,6 +41,12 @@ static int sum_2_m_to_n(int m, int n) {
     return ((n * (n + 1) * ((2 * n) + 1)) - (m * (m - 1) * ((2 * m) - 1))) / 6;
 }
 
+static long long sum_3_m_to_n(int m, int n) {
+    long long n_sum = (n * (n + 1)) / 2;
+    long long m_sum = (m * (m - 1)) / 2;
+    return (n_sum * n_sum) - (m_sum * m_sum);
+}
+
 static int cumulative_moving_average(int avg, int x, int n) {
     return (x + (n * avg)) / (n + 1);
 }
@@ -201,6 +207,10 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                             long long blob_a = 0;
                             long long blob_b = 0;
                             long long blob_c = 0;
+                            long long blob_d = 0;
+                            long long blob_e = 0;
+                            long long blob_f = 0;
+                            long long blob_g = 0;
 
                             if (x_hist_bins) {
                                 memset(x_hist_bins, 0, ptr->w * sizeof(uint16_t));
@@ -264,6 +274,10 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 blob_a += sum_2;
                                 blob_b += y * sum;
                                 blob_c += y * y * cnt;
+                                blob_d += sum_3_m_to_n(left, right);
+                                blob_e += (long long)y * sum_2;
+                                blob_f += (long long)y * y * sum;
+                                blob_g += (long long)y * y * y * cnt;
 
                                 if (y_hist_bins) {
                                     y_hist_bins[y] += cnt;
@@ -407,6 +421,49 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
                                 int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
 
+                                long long blob_d_trans = blob_d - (3 * mx * blob_a) + (3 * mx * mx * blob_cx) - (blob_pixels * mx * mx * mx);
+                                long long blob_e_trans = blob_e - (2 * mx * blob_b) - (my * blob_a) + (2 * mx * mx * blob_cy) + (2 * mx * my * blob_cx) - (2 * blob_pixels * mx * mx * my);
+                                long long blob_f_trans = blob_f - (mx * blob_c) - (2 * my * blob_b) + (2 * my * my * blob_cx) + (2 * mx * my * blob_cy) - (2 * blob_pixels * mx * my * my);
+                                long long blob_g_trans = blob_g - (3 * my * blob_c) + (3 * my * my * blob_cy) - (blob_pixels * my * my * my);
+
+                                float mu20 = small_blob_a / (float) blob_pixels;
+                                float mu02 = small_blob_c / (float) blob_pixels;
+                                float mu11 = small_blob_b / (float) blob_pixels;
+                                float mu30 = blob_d_trans / (float) blob_pixels;
+                                float mu03 = blob_g_trans / (float) blob_pixels;
+                                float mu21 = blob_e_trans / (float) blob_pixels;
+                                float mu12 = blob_f_trans / (float) blob_pixels;
+
+                                float inv_m00 = 1.0f / blob_pixels;
+                                float inv_m00_2 = inv_m00 * inv_m00;
+                                float inv_m00_2_5 = inv_m00_2 * fast_sqrtf(inv_m00);
+
+                                float eta20 = mu20 * inv_m00_2;
+                                float eta02 = mu02 * inv_m00_2;
+                                float eta11 = mu11 * inv_m00_2;
+                                float eta30 = mu30 * inv_m00_2_5;
+                                float eta03 = mu03 * inv_m00_2_5;
+                                float eta21 = mu21 * inv_m00_2_5;
+                                float eta12 = mu12 * inv_m00_2_5;
+
+                                float t0 = eta20 + eta02;
+                                float t1 = eta20 - eta02;
+                                float t2 = eta30 - 3 * eta12;
+                                float t3 = 3 * eta21 - eta03;
+                                float t4 = eta30 + eta12;
+                                float t5 = eta21 + eta03;
+                                float t6 = t4 * t4;
+                                float t7 = t5 * t5;
+
+                                float hu[7];
+                                hu[0] = t0;
+                                hu[1] = (t1 * t1) + (4 * eta11 * eta11);
+                                hu[2] = (t2 * t2) + (t3 * t3);
+                                hu[3] = t6 + t7;
+                                hu[4] = (t2 * t4 * (t6 - 3 * t7)) + (t3 * t5 * (3 * t6 - t7));
+                                hu[5] = (t1 * (t6 - t7)) + (4 * eta11 * t4 * t5);
+                                hu[6] = (t3 * t4 * (t6 - 3 * t7)) - (t2 * t5 * (3 * t6 - t7));
+
                                 find_blobs_list_lnk_data_t lnk_blob;
                                 memcpy(lnk_blob.corners, corners, FIND_BLOBS_CORNERS_RESOLUTION * sizeof(point_t));
                                 memcpy(&lnk_blob.rect, &rect, sizeof(rectangle_t));
@@ -430,6 +487,7 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 lnk_blob.rotation_acc_x = cosf(lnk_blob.rotation) * lnk_blob.pixels;
                                 lnk_blob.rotation_acc_y = sinf(lnk_blob.rotation) * lnk_blob.pixels;
                                 lnk_blob.roundness_acc = lnk_blob.roundness * lnk_blob.pixels;
+                                memcpy(lnk_blob.hu, hu, sizeof(hu));
 
                                 if (x_hist_bins) {
                                     bin_up(x_hist_bins,
@@ -507,6 +565,10 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                             long long blob_a = 0;
                             long long blob_b = 0;
                             long long blob_c = 0;
+                            long long blob_d = 0;
+                            long long blob_e = 0;
+                            long long blob_f = 0;
+                            long long blob_g = 0;
 
                             if (x_hist_bins) {
                                 memset(x_hist_bins, 0, ptr->w * sizeof(uint16_t));
@@ -570,6 +632,10 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 blob_a += sum_2;
                                 blob_b += y * sum;
                                 blob_c += y * y * cnt;
+                                blob_d += sum_3_m_to_n(left, right);
+                                blob_e += (long long)y * sum_2;
+                                blob_f += (long long)y * y * sum;
+                                blob_g += (long long)y * y * y * cnt;
 
                                 if (y_hist_bins) {
                                     y_hist_bins[y] += cnt;
@@ -713,6 +779,49 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
                                 int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
 
+                                long long blob_d_trans = blob_d - (3 * mx * blob_a) + (3 * mx * mx * blob_cx) - (blob_pixels * mx * mx * mx);
+                                long long blob_e_trans = blob_e - (2 * mx * blob_b) - (my * blob_a) + (2 * mx * mx * blob_cy) + (2 * mx * my * blob_cx) - (2 * blob_pixels * mx * mx * my);
+                                long long blob_f_trans = blob_f - (mx * blob_c) - (2 * my * blob_b) + (2 * my * my * blob_cx) + (2 * mx * my * blob_cy) - (2 * blob_pixels * mx * my * my);
+                                long long blob_g_trans = blob_g - (3 * my * blob_c) + (3 * my * my * blob_cy) - (blob_pixels * my * my * my);
+
+                                float mu20 = small_blob_a / (float) blob_pixels;
+                                float mu02 = small_blob_c / (float) blob_pixels;
+                                float mu11 = small_blob_b / (float) blob_pixels;
+                                float mu30 = blob_d_trans / (float) blob_pixels;
+                                float mu03 = blob_g_trans / (float) blob_pixels;
+                                float mu21 = blob_e_trans / (float) blob_pixels;
+                                float mu12 = blob_f_trans / (float) blob_pixels;
+
+                                float inv_m00 = 1.0f / blob_pixels;
+                                float inv_m00_2 = inv_m00 * inv_m00;
+                                float inv_m00_2_5 = inv_m00_2 * fast_sqrtf(inv_m00);
+
+                                float eta20 = mu20 * inv_m00_2;
+                                float eta02 = mu02 * inv_m00_2;
+                                float eta11 = mu11 * inv_m00_2;
+                                float eta30 = mu30 * inv_m00_2_5;
+                                float eta03 = mu03 * inv_m00_2_5;
+                                float eta21 = mu21 * inv_m00_2_5;
+                                float eta12 = mu12 * inv_m00_2_5;
+
+                                float t0 = eta20 + eta02;
+                                float t1 = eta20 - eta02;
+                                float t2 = eta30 - 3 * eta12;
+                                float t3 = 3 * eta21 - eta03;
+                                float t4 = eta30 + eta12;
+                                float t5 = eta21 + eta03;
+                                float t6 = t4 * t4;
+                                float t7 = t5 * t5;
+
+                                float hu[7];
+                                hu[0] = t0;
+                                hu[1] = (t1 * t1) + (4 * eta11 * eta11);
+                                hu[2] = (t2 * t2) + (t3 * t3);
+                                hu[3] = t6 + t7;
+                                hu[4] = (t2 * t4 * (t6 - 3 * t7)) + (t3 * t5 * (3 * t6 - t7));
+                                hu[5] = (t1 * (t6 - t7)) + (4 * eta11 * t4 * t5);
+                                hu[6] = (t3 * t4 * (t6 - 3 * t7)) - (t2 * t5 * (3 * t6 - t7));
+
                                 find_blobs_list_lnk_data_t lnk_blob;
                                 memcpy(lnk_blob.corners, corners, FIND_BLOBS_CORNERS_RESOLUTION * sizeof(point_t));
                                 memcpy(&lnk_blob.rect, &rect, sizeof(rectangle_t));
@@ -736,6 +845,7 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 lnk_blob.rotation_acc_x = cosf(lnk_blob.rotation) * lnk_blob.pixels;
                                 lnk_blob.rotation_acc_y = sinf(lnk_blob.rotation) * lnk_blob.pixels;
                                 lnk_blob.roundness_acc = lnk_blob.roundness * lnk_blob.pixels;
+                                memcpy(lnk_blob.hu, hu, sizeof(hu));
 
                                 if (x_hist_bins) {
                                     bin_up(x_hist_bins,
@@ -813,6 +923,10 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                             long long blob_a = 0;
                             long long blob_b = 0;
                             long long blob_c = 0;
+                            long long blob_d = 0;
+                            long long blob_e = 0;
+                            long long blob_f = 0;
+                            long long blob_g = 0;
 
                             if (x_hist_bins) {
                                 memset(x_hist_bins, 0, ptr->w * sizeof(uint16_t));
@@ -876,6 +990,10 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 blob_a += sum_2;
                                 blob_b += y * sum;
                                 blob_c += y * y * cnt;
+                                blob_d += sum_3_m_to_n(left, right);
+                                blob_e += (long long)y * sum_2;
+                                blob_f += (long long)y * y * sum;
+                                blob_g += (long long)y * y * y * cnt;
 
                                 if (y_hist_bins) {
                                     y_hist_bins[y] += cnt;
@@ -1019,6 +1137,49 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
                                 int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
 
+                                long long blob_d_trans = blob_d - (3 * mx * blob_a) + (3 * mx * mx * blob_cx) - (blob_pixels * mx * mx * mx);
+                                long long blob_e_trans = blob_e - (2 * mx * blob_b) - (my * blob_a) + (2 * mx * mx * blob_cy) + (2 * mx * my * blob_cx) - (2 * blob_pixels * mx * mx * my);
+                                long long blob_f_trans = blob_f - (mx * blob_c) - (2 * my * blob_b) + (2 * my * my * blob_cx) + (2 * mx * my * blob_cy) - (2 * blob_pixels * mx * my * my);
+                                long long blob_g_trans = blob_g - (3 * my * blob_c) + (3 * my * my * blob_cy) - (blob_pixels * my * my * my);
+
+                                float mu20 = small_blob_a / (float) blob_pixels;
+                                float mu02 = small_blob_c / (float) blob_pixels;
+                                float mu11 = small_blob_b / (float) blob_pixels;
+                                float mu30 = blob_d_trans / (float) blob_pixels;
+                                float mu03 = blob_g_trans / (float) blob_pixels;
+                                float mu21 = blob_e_trans / (float) blob_pixels;
+                                float mu12 = blob_f_trans / (float) blob_pixels;
+
+                                float inv_m00 = 1.0f / blob_pixels;
+                                float inv_m00_2 = inv_m00 * inv_m00;
+                                float inv_m00_2_5 = inv_m00_2 * fast_sqrtf(inv_m00);
+
+                                float eta20 = mu20 * inv_m00_2;
+                                float eta02 = mu02 * inv_m00_2;
+                                float eta11 = mu11 * inv_m00_2;
+                                float eta30 = mu30 * inv_m00_2_5;
+                                float eta03 = mu03 * inv_m00_2_5;
+                                float eta21 = mu21 * inv_m00_2_5;
+                                float eta12 = mu12 * inv_m00_2_5;
+
+                                float t0 = eta20 + eta02;
+                                float t1 = eta20 - eta02;
+                                float t2 = eta30 - 3 * eta12;
+                                float t3 = 3 * eta21 - eta03;
+                                float t4 = eta30 + eta12;
+                                float t5 = eta21 + eta03;
+                                float t6 = t4 * t4;
+                                float t7 = t5 * t5;
+
+                                float hu[7];
+                                hu[0] = t0;
+                                hu[1] = (t1 * t1) + (4 * eta11 * eta11);
+                                hu[2] = (t2 * t2) + (t3 * t3);
+                                hu[3] = t6 + t7;
+                                hu[4] = (t2 * t4 * (t6 - 3 * t7)) + (t3 * t5 * (3 * t6 - t7));
+                                hu[5] = (t1 * (t6 - t7)) + (4 * eta11 * t4 * t5);
+                                hu[6] = (t3 * t4 * (t6 - 3 * t7)) - (t2 * t5 * (3 * t6 - t7));
+
                                 find_blobs_list_lnk_data_t lnk_blob;
                                 memcpy(lnk_blob.corners, corners, FIND_BLOBS_CORNERS_RESOLUTION * sizeof(point_t));
                                 memcpy(&lnk_blob.rect, &rect, sizeof(rectangle_t));
@@ -1042,6 +1203,7 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 lnk_blob.rotation_acc_x = cosf(lnk_blob.rotation) * lnk_blob.pixels;
                                 lnk_blob.rotation_acc_y = sinf(lnk_blob.rotation) * lnk_blob.pixels;
                                 lnk_blob.roundness_acc = lnk_blob.roundness * lnk_blob.pixels;
+                                memcpy(lnk_blob.hu, hu, sizeof(hu));
 
                                 if (x_hist_bins) {
                                     bin_up(x_hist_bins,
