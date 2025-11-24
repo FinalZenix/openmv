@@ -3971,6 +3971,7 @@ typedef struct py_blob_obj {
     mp_obj_t x, y, w, h, pixels, cx, cy, rotation, code, count, perimeter, roundness;
     mp_obj_t x_hist_bins;
     mp_obj_t y_hist_bins;
+    mp_obj_t hu;
 } py_blob_obj_t;
 
 static void py_blob_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
@@ -4393,6 +4394,11 @@ mp_obj_t py_blob_enclosed_ellipse(mp_obj_t self_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(py_blob_enclosed_ellipse_obj, py_blob_enclosed_ellipse);
 
+mp_obj_t py_blob_hu(mp_obj_t self_in) {
+    return ((py_blob_obj_t *) self_in)->hu;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(py_blob_hu_obj, py_blob_hu);
+
 static const mp_rom_map_elem_t py_blob_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_corners), MP_ROM_PTR(&py_blob_corners_obj) },
     { MP_ROM_QSTR(MP_QSTR_min_corners), MP_ROM_PTR(&py_blob_min_corners_obj) },
@@ -4425,7 +4431,8 @@ static const mp_rom_map_elem_t py_blob_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_major_axis_line), MP_ROM_PTR(&py_blob_major_axis_line_obj) },
     { MP_ROM_QSTR(MP_QSTR_minor_axis_line), MP_ROM_PTR(&py_blob_minor_axis_line_obj) },
     { MP_ROM_QSTR(MP_QSTR_enclosing_circle), MP_ROM_PTR(&py_blob_enclosing_circle_obj) },
-    { MP_ROM_QSTR(MP_QSTR_enclosed_ellipse), MP_ROM_PTR(&py_blob_enclosed_ellipse_obj) }
+    { MP_ROM_QSTR(MP_QSTR_enclosed_ellipse), MP_ROM_PTR(&py_blob_enclosed_ellipse_obj) },
+    { MP_ROM_QSTR(MP_QSTR_hu), MP_ROM_PTR(&py_blob_hu_obj) }
 };
 
 static MP_DEFINE_CONST_DICT(py_blob_locals_dict, py_blob_locals_dict_table);
@@ -4490,6 +4497,11 @@ static py_blob_obj_t *py_blob_new(find_blobs_list_lnk_data_t *blob) {
 
     for (int i = 0; i < blob->y_hist_bins_count; i++) {
         ((mp_obj_list_t *) o->y_hist_bins)->items[i] = mp_obj_new_int(blob->y_hist_bins[i]);
+    }
+
+    o->hu = mp_obj_new_list(7, NULL);
+    for (int i = 0; i < 7; i++) {
+        ((mp_obj_list_t *) o->hu)->items[i] = mp_obj_new_float(blob->hu[i]);
     }
 
     return o;
