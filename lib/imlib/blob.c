@@ -415,24 +415,16 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
 
                                 float b_mx = blob_cx / ((float) blob_pixels);
                                 float b_my = blob_cy / ((float) blob_pixels);
-                                int mx = fast_roundf(b_mx); // x centroid
-                                int my = fast_roundf(b_my); // y centroid
-                                int small_blob_a = blob_a - ((mx * blob_cx) + (mx * blob_cx)) + (blob_pixels * mx * mx);
-                                int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
-                                int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
-
-                                long long blob_d_trans = blob_d - (3 * mx * blob_a) + (3 * mx * mx * blob_cx) - (blob_pixels * mx * mx * mx);
-                                long long blob_e_trans = blob_e - (2 * mx * blob_b) - (my * blob_a) + (2 * mx * mx * blob_cy) + (2 * mx * my * blob_cx) - (2 * blob_pixels * mx * mx * my);
-                                long long blob_f_trans = blob_f - (mx * blob_c) - (2 * my * blob_b) + (2 * my * my * blob_cx) + (2 * mx * my * blob_cy) - (2 * blob_pixels * mx * my * my);
-                                long long blob_g_trans = blob_g - (3 * my * blob_c) + (3 * my * my * blob_cy) - (blob_pixels * my * my * my);
-
-                                float mu20 = small_blob_a / (float) blob_pixels;
-                                float mu02 = small_blob_c / (float) blob_pixels;
-                                float mu11 = small_blob_b / (float) blob_pixels;
-                                float mu30 = blob_d_trans / (float) blob_pixels;
-                                float mu03 = blob_g_trans / (float) blob_pixels;
-                                float mu21 = blob_e_trans / (float) blob_pixels;
-                                float mu12 = blob_f_trans / (float) blob_pixels;
+                                
+                                // Calculate central moments using float centroids for precision
+                                float mu20 = blob_a - (b_mx * blob_cx);
+                                float mu02 = blob_c - (b_my * blob_cy);
+                                float mu11 = blob_b - (b_mx * blob_cy);
+                                
+                                float mu30 = blob_d - (3 * b_mx * blob_a) + (2 * b_mx * b_mx * blob_cx);
+                                float mu03 = blob_g - (3 * b_my * blob_c) + (2 * b_my * b_my * blob_cy);
+                                float mu21 = blob_e - (2 * b_mx * blob_b) - (b_my * blob_a) + (2 * b_mx * b_mx * blob_cy);
+                                float mu12 = blob_f - (b_mx * blob_c) - (2 * b_my * blob_b) + (2 * b_my * b_my * blob_cx);
 
                                 float inv_m00 = 1.0f / blob_pixels;
                                 float inv_m00_2 = inv_m00 * inv_m00;
@@ -463,6 +455,13 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 hu[4] = (t2 * t4 * (t6 - 3 * t7)) + (t3 * t5 * (3 * t6 - t7));
                                 hu[5] = (t1 * (t6 - t7)) + (4 * eta11 * t4 * t5);
                                 hu[6] = (t3 * t4 * (t6 - 3 * t7)) - (t2 * t5 * (3 * t6 - t7));
+
+                                // Revert to integer centroids for standard blob properties to maintain existing behavior
+                                int mx = fast_roundf(b_mx); 
+                                int my = fast_roundf(b_my); 
+                                int small_blob_a = blob_a - ((mx * blob_cx) + (mx * blob_cx)) + (blob_pixels * mx * mx);
+                                int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
+                                int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
 
                                 find_blobs_list_lnk_data_t lnk_blob;
                                 memcpy(lnk_blob.corners, corners, FIND_BLOBS_CORNERS_RESOLUTION * sizeof(point_t));
@@ -773,24 +772,16 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
 
                                 float b_mx = blob_cx / ((float) blob_pixels);
                                 float b_my = blob_cy / ((float) blob_pixels);
-                                int mx = fast_roundf(b_mx); // x centroid
-                                int my = fast_roundf(b_my); // y centroid
-                                int small_blob_a = blob_a - ((mx * blob_cx) + (mx * blob_cx)) + (blob_pixels * mx * mx);
-                                int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
-                                int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
-
-                                long long blob_d_trans = blob_d - (3 * mx * blob_a) + (3 * mx * mx * blob_cx) - (blob_pixels * mx * mx * mx);
-                                long long blob_e_trans = blob_e - (2 * mx * blob_b) - (my * blob_a) + (2 * mx * mx * blob_cy) + (2 * mx * my * blob_cx) - (2 * blob_pixels * mx * mx * my);
-                                long long blob_f_trans = blob_f - (mx * blob_c) - (2 * my * blob_b) + (2 * my * my * blob_cx) + (2 * mx * my * blob_cy) - (2 * blob_pixels * mx * my * my);
-                                long long blob_g_trans = blob_g - (3 * my * blob_c) + (3 * my * my * blob_cy) - (blob_pixels * my * my * my);
-
-                                float mu20 = small_blob_a / (float) blob_pixels;
-                                float mu02 = small_blob_c / (float) blob_pixels;
-                                float mu11 = small_blob_b / (float) blob_pixels;
-                                float mu30 = blob_d_trans / (float) blob_pixels;
-                                float mu03 = blob_g_trans / (float) blob_pixels;
-                                float mu21 = blob_e_trans / (float) blob_pixels;
-                                float mu12 = blob_f_trans / (float) blob_pixels;
+                                
+                                // Calculate central moments using float centroids for precision
+                                float mu20 = blob_a - (b_mx * blob_cx);
+                                float mu02 = blob_c - (b_my * blob_cy);
+                                float mu11 = blob_b - (b_mx * blob_cy);
+                                
+                                float mu30 = blob_d - (3 * b_mx * blob_a) + (2 * b_mx * b_mx * blob_cx);
+                                float mu03 = blob_g - (3 * b_my * blob_c) + (2 * b_my * b_my * blob_cy);
+                                float mu21 = blob_e - (2 * b_mx * blob_b) - (b_my * blob_a) + (2 * b_mx * b_mx * blob_cy);
+                                float mu12 = blob_f - (b_mx * blob_c) - (2 * b_my * blob_b) + (2 * b_my * b_my * blob_cx);
 
                                 float inv_m00 = 1.0f / blob_pixels;
                                 float inv_m00_2 = inv_m00 * inv_m00;
@@ -821,6 +812,13 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 hu[4] = (t2 * t4 * (t6 - 3 * t7)) + (t3 * t5 * (3 * t6 - t7));
                                 hu[5] = (t1 * (t6 - t7)) + (4 * eta11 * t4 * t5);
                                 hu[6] = (t3 * t4 * (t6 - 3 * t7)) - (t2 * t5 * (3 * t6 - t7));
+
+                                // Revert to integer centroids for standard blob properties to maintain existing behavior
+                                int mx = fast_roundf(b_mx); 
+                                int my = fast_roundf(b_my); 
+                                int small_blob_a = blob_a - ((mx * blob_cx) + (mx * blob_cx)) + (blob_pixels * mx * mx);
+                                int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
+                                int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
 
                                 find_blobs_list_lnk_data_t lnk_blob;
                                 memcpy(lnk_blob.corners, corners, FIND_BLOBS_CORNERS_RESOLUTION * sizeof(point_t));
@@ -1131,24 +1129,16 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
 
                                 float b_mx = blob_cx / ((float) blob_pixels);
                                 float b_my = blob_cy / ((float) blob_pixels);
-                                int mx = fast_roundf(b_mx); // x centroid
-                                int my = fast_roundf(b_my); // y centroid
-                                int small_blob_a = blob_a - ((mx * blob_cx) + (mx * blob_cx)) + (blob_pixels * mx * mx);
-                                int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
-                                int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
-
-                                long long blob_d_trans = blob_d - (3 * mx * blob_a) + (3 * mx * mx * blob_cx) - (blob_pixels * mx * mx * mx);
-                                long long blob_e_trans = blob_e - (2 * mx * blob_b) - (my * blob_a) + (2 * mx * mx * blob_cy) + (2 * mx * my * blob_cx) - (2 * blob_pixels * mx * mx * my);
-                                long long blob_f_trans = blob_f - (mx * blob_c) - (2 * my * blob_b) + (2 * my * my * blob_cx) + (2 * mx * my * blob_cy) - (2 * blob_pixels * mx * my * my);
-                                long long blob_g_trans = blob_g - (3 * my * blob_c) + (3 * my * my * blob_cy) - (blob_pixels * my * my * my);
-
-                                float mu20 = small_blob_a / (float) blob_pixels;
-                                float mu02 = small_blob_c / (float) blob_pixels;
-                                float mu11 = small_blob_b / (float) blob_pixels;
-                                float mu30 = blob_d_trans / (float) blob_pixels;
-                                float mu03 = blob_g_trans / (float) blob_pixels;
-                                float mu21 = blob_e_trans / (float) blob_pixels;
-                                float mu12 = blob_f_trans / (float) blob_pixels;
+                                
+                                // Calculate central moments using float centroids for precision
+                                float mu20 = blob_a - (b_mx * blob_cx);
+                                float mu02 = blob_c - (b_my * blob_cy);
+                                float mu11 = blob_b - (b_mx * blob_cy);
+                                
+                                float mu30 = blob_d - (3 * b_mx * blob_a) + (2 * b_mx * b_mx * blob_cx);
+                                float mu03 = blob_g - (3 * b_my * blob_c) + (2 * b_my * b_my * blob_cy);
+                                float mu21 = blob_e - (2 * b_mx * blob_b) - (b_my * blob_a) + (2 * b_mx * b_mx * blob_cy);
+                                float mu12 = blob_f - (b_mx * blob_c) - (2 * b_my * blob_b) + (2 * b_my * b_my * blob_cx);
 
                                 float inv_m00 = 1.0f / blob_pixels;
                                 float inv_m00_2 = inv_m00 * inv_m00;
@@ -1179,6 +1169,13 @@ void imlib_find_blobs(list_t *out, image_t *ptr, rectangle_t *roi, unsigned int 
                                 hu[4] = (t2 * t4 * (t6 - 3 * t7)) + (t3 * t5 * (3 * t6 - t7));
                                 hu[5] = (t1 * (t6 - t7)) + (4 * eta11 * t4 * t5);
                                 hu[6] = (t3 * t4 * (t6 - 3 * t7)) - (t2 * t5 * (3 * t6 - t7));
+
+                                // Revert to integer centroids for standard blob properties to maintain existing behavior
+                                int mx = fast_roundf(b_mx); 
+                                int my = fast_roundf(b_my); 
+                                int small_blob_a = blob_a - ((mx * blob_cx) + (mx * blob_cx)) + (blob_pixels * mx * mx);
+                                int small_blob_b = blob_b - ((mx * blob_cy) + (my * blob_cx)) + (blob_pixels * mx * my);
+                                int small_blob_c = blob_c - ((my * blob_cy) + (my * blob_cy)) + (blob_pixels * my * my);
 
                                 find_blobs_list_lnk_data_t lnk_blob;
                                 memcpy(lnk_blob.corners, corners, FIND_BLOBS_CORNERS_RESOLUTION * sizeof(point_t));
